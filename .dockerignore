@@ -3,6 +3,7 @@
 .git
 .gitignore
 .idea
+.travis.yml
 
 build/
 !build/vendor/woff-code-latest.zip

@@ -1,36 +1,109 @@
-rvm:
-  - "1.9.3"
+dist: xenial
+os: linux
+language: ruby
+
+git:
+  depth: 3
+
+branches:
+  only:
+    - feature/travis-ci
+    # - master
+    # - stable
+
 services:
-  - redis-server
-before_script:
-  - find ./config -depth -name "*.yml.example" -exec sh -c 'cp "$1" "${1%.yml.example}.yml"' _ {} \;
-  - psql -c 'create database myapp_test;' -U postgres; cp ./config/database.yml.travis ./config/database.yml
-  - RAILS_ENV=test rake db:migrate
-script:
-  - bundle exec rake
-gemfile:
-  - Gemfile
+  - docker
+
+# need docker-ce 19.03
+addons:
+  apt:
+    sources:
+      - sourceline: 'deb [arch=amd64] https://download.docker.com/linux/ubuntu xenial stable'
+        key_url: 'https://download.docker.com/linux/ubuntu/gpg'
+    packages:
+      - docker-ce=5:19.03.12~3-0~ubuntu-xenial
+      - docker-ce-cli=5:19.03.12~3-0~ubuntu-xenial
+      - containerd.io
+      - parallel
+      - pigz
+
 env:
-  - SPEC="spec/apis/**/[a-b]*_spec.rb"
-  - SPEC="spec/apis/**/c*_spec.rb"
-  - SPEC="spec/apis/**/[d-m]*_spec.rb"
-  - SPEC="spec/apis/**/[n-z]*_spec.rb"
-  - SPEC="spec/controllers/**/*_spec.rb"
-  - SPEC="spec/gem_integration/**/*_spec.rb"
-  - SPEC="spec/helpers/**/*_spec.rb"
-  - SPEC="spec/initializers/**/*_spec.rb"
-  - SPEC="spec/integration/**/*_spec.rb"
-  - SPEC="spec/lib/**/*_spec.rb"
-  - SPEC="spec/messages/**/*_spec.rb"
-  - SPEC="spec/migrations/**/*_spec.rb"
-  - SPEC="spec/models/[a-b]*_spec.rb"
-  - SPEC="spec/models/c*_spec.rb"
-  - SPEC="spec/models/[d-m]*_spec.rb"
-  - SPEC="spec/models/[n-z]*_spec.rb"
-  - SPEC="spec/models/*/*_spec.rb"
-  - SPEC="spec/observers/**/*_spec.rb"
-  - SPEC="spec/presenters/**/*_spec.rb"
-  - SPEC="spec/selenium/**/*_spec.rb"
-  - SPEC="spec/serializers/**/*_spec.rb"
-  - SPEC="spec/services/**/*_spec.rb"
-  - SPEC="spec/views/**/*_spec.rb"
+  global:
+    - DOCKER_BUILDKIT=1
+    - DOCKER_CLI_EXPERIMENTAL=enabled
+    - DOCKER_PROCESSES=2
+    - CI_NODE_TOTAL=4
+    - COMPOSE_FILE=docker-compose.new-jenkins.yml
+    - EXCLUDE_TESTS='.*/selenium'
+    - MAX_FAIL=250
+    - PATCHSET_TAG=djbender/canvas-lms:travis-ci-test
+    - CACHE_TAG=djbender/canvas-lms:travis-ci-test-cache
+    - POSTGRES=9.5
+    - POSTGRES_PASSWORD=sekret
+    - RERUNS_RETRY=3
+    - RUBY=2.6
+    - TEST_PATTERN='^./(spec|gems/plugins/.*/spec_canvas)/'
+    # - CANVAS_BUILD_CONCURRENCY=1
+    # - JS_BUILD_NO_UGLIFY=1
+  jobs:
+    - CI_NODE_INDEX=0
+    - CI_NODE_INDEX=1
+    - CI_NODE_INDEX=2
+    - CI_NODE_INDEX=3
+
+install: true
+
+stages:
+  - build docker image
+  - test
+
+jobs:
+  include:
+    - stage: build docker image
+      env:
+      - secure: "d4v3vqDPUydkeLqN6Kc7B3+bcHUYw5v8HDUOiH7/Y57EYTYZesXPxYeZWdtF8eRCpDcwomeJbMH4QyvABlhTOU5Y2tQVXPNFBiiKpgNV8GyUbIM7OXA8VFWj9s0rlI+1OpxN0py2p0LAXdYzvurf3Ck+EvuBvsNeB/xX6+asf+8="
+      before_script:
+        - |
+          cp -v docker-compose/config/selenium.yml config/
+          cp -vR docker-compose/config/new-jenkins/* config/
+          cp -v config/delayed_jobs.yml.example config/delayed_jobs.yml
+          cp -v config/domain.yml.example config/domain.yml
+          cp -v config/external_migration.yml.example config/external_migration.yml
+          cp -v config/outgoing_mail.yml.example config/outgoing_mail.yml
+        - docker buildx create --driver docker-container --use
+        - docker login --username "$DOCKER_USERNAME" --password "$DOCKER_PASSWORD"
+      script:
+        - >
+          docker buildx build
+          --tag "$PATCHSET_TAG"
+          --build-arg RUBY_PASSENGER=$RUBY
+          --build-arg POSTGRES_VERSION=$POSTGRES
+          --cache-from=type=registry,ref="$CACHE_TAG"
+          --cache-to=type=registry,ref="$CACHE_TAG",mode=max
+          --push
+          .
+
+before_script:
+  - "parallel --will-cite ::: :"
+  - docker --version
+  - docker-compose --version
+  - docker buildx create --driver docker-container --use
+
+script:
+  # count down
+  - export CI_PROCESS_TOTAL=$((CI_NODE_TOTAL * DOCKER_PROCESSES))
+  - export GROUP_OFFSET=$((((CI_NODE_TOTAL - CI_NODE_INDEX - 1) * DOCKER_PROCESSES) + 1 - TEST_PROCESS))
+  - set -e
+  # - docker build -t starlord.inscloudgate.net/jenkins selenium-chrome:3.141.59-zirconium docker-compose/selenium-chrome
+  # - build/new-jenkins/docker-compose-pull-selenium.sh
+  - build/new-jenkins/docker-compose-build-up.sh
+  - build/new-jenkins/docker-compose-setup-databases.sh
+  - echo DEBUG docker-compose --project-name canvas-lms0 exec -T canvas bash -c "bundle exec parallel_rspec ./ --test-options '--dry-run' --pattern \"$TEST_PATTERN\" --exclude-pattern $EXCLUDE_TESTS -n $CI_PROCESS_TOTAL --only-group $((GROUP_OFFSET - 0)) --verbose --group-by runtime --runtime-log parallel_runtime_rspec.log"
+  - docker-compose --project-name canvas-lms0 exec -T canvas bash -c "bundle exec parallel_rspec ./ --test-options '--dry-run' --pattern \"$TEST_PATTERN\" --exclude-pattern $EXCLUDE_TESTS -n $CI_PROCESS_TOTAL --only-group $((GROUP_OFFSET - 0)) --verbose --group-by runtime --runtime-log parallel_runtime_rspec.log" &
+  - job0=$!
+  - docker-compose --project-name canvas-lms1 exec -T canvas bash -c "bundle exec parallel_rspec ./ --test-options '--dry-run' --pattern \"$TEST_PATTERN\" --exclude-pattern $EXCLUDE_TESTS -n $CI_PROCESS_TOTAL --only-group $((GROUP_OFFSET - 1)) --verbose --group-by runtime --runtime-log parallel_runtime_rspec.log" &
+  - job1=$!
+  - wait $job0 $job1
+  # - docker-compose --project-name canvas-lms1 exec -T -e TEST_PROCESS=1 canvas bash -c "bundle exec parallel_rspec ./ --pattern $TEST_PATTERN --exclude-pattern $EXCLUDE_TESTS -n 2 --only-group 1 --verbose --group-by runtime --runtime-log parallel_runtime_rspec.log" &
+  # - build/new-jenkins/rspec_parallel_dockers.sh
+  - set +e

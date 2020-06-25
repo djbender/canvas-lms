@@ -1,7 +1,5 @@
 #!/bin/bash
 set -o errexit -o errtrace -o pipefail -o xtrace
-# ':' is a bash "no-op"
-parallel --will-cite ::: :
 
 # build and start services
 docker-compose build --parallel canvas cassandra postgres redis

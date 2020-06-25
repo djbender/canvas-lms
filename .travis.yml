@@ -1,6 +1,6 @@
 dist: xenial
 os: linux
-language: ruby
+language: rust # for a parallel written in rust and MIT licensed
 
 git:
   depth: 3
@@ -21,10 +21,10 @@ addons:
       - sourceline: 'deb [arch=amd64] https://download.docker.com/linux/ubuntu xenial stable'
         key_url: 'https://download.docker.com/linux/ubuntu/gpg'
     packages:
+      - containerd.io
       - docker-ce=5:19.03.12~3-0~ubuntu-xenial
       - docker-ce-cli=5:19.03.12~3-0~ubuntu-xenial
-      - containerd.io
-      - parallel
+      - musl-tools
       - pigz
 
 env:
@@ -51,7 +51,14 @@ env:
     - CI_NODE_INDEX=2
     - CI_NODE_INDEX=3
 
-install: true
+install:
+  - rustup target add x86_64-unknown-linux-musl
+  - wget https://github.com/mmstick/parallel/archive/master.zip
+  - unzip master.zip
+  - pushd parallel-master
+  - cargo build --release --target x86_64-unknown-linux-musl
+  - sudo install target/x86_64-unknown-linux-musl/release/parallel /usr/local/bin/parallel
+  - popd
 
 stages:
   - build docker image
@@ -84,7 +91,6 @@ jobs:
           .
 
 before_script:
-  - "parallel --will-cite ::: :"
   - docker --version
   - docker-compose --version
   - docker buildx create --driver docker-container --use

@@ -1,8 +1,6 @@
 #!/bin/bash
 
 set -o errexit -o errtrace -o nounset -o pipefail -o xtrace
-# ':' is a bash "no-op" and then we pass an empty argument which isn't used
-parallel --will-cite ::: :
 
 DOCKER_PROCESSES=${DOCKER_PROCESSES:-1}
 PROCESSES=$((DOCKER_PROCESSES - 1))

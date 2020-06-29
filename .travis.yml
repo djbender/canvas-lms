@@ -143,10 +143,8 @@ script:
   # - build/new-jenkins/docker-compose-pull-selenium.sh
   - build/new-jenkins/docker-compose-build-up.sh
   - build/new-jenkins/docker-compose-setup-databases.sh
-  - docker-compose --project-name canvas-lms0 exec -T canvas bash -c "bundle exec parallel_rspec ./  --pattern \"$TEST_PATTERN\" --exclude-pattern $EXCLUDE_TESTS -n $CI_PROCESS_TOTAL --only-group $((GROUP_OFFSET - 0)) --verbose --group-by runtime --runtime-log parallel_runtime_rspec.log" &
-  - job0=$!
-  - docker-compose --project-name canvas-lms1 exec -T canvas bash -c "bundle exec parallel_rspec ./ --pattern \"$TEST_PATTERN\" --exclude-pattern $EXCLUDE_TESTS -n $CI_PROCESS_TOTAL --only-group $((GROUP_OFFSET - 1)) --verbose --group-by runtime --runtime-log parallel_runtime_rspec.log" &
-  - job1=$!
+  - docker-compose --project-name canvas-lms0 exec -T canvas bash -c "bundle exec parallel_rspec ./  --pattern \"$TEST_PATTERN\" --exclude-pattern $EXCLUDE_TESTS -n $CI_PROCESS_TOTAL --only-group $((GROUP_OFFSET - 0)) --verbose --group-by runtime --runtime-log parallel_runtime_rspec.log" &; export job0=$?
+  - docker-compose --project-name canvas-lms1 exec -T canvas bash -c "bundle exec parallel_rspec ./ --pattern \"$TEST_PATTERN\" --exclude-pattern $EXCLUDE_TESTS -n $CI_PROCESS_TOTAL --only-group $((GROUP_OFFSET - 1)) --verbose --group-by runtime --runtime-log parallel_runtime_rspec.log" &; export job1=$?
   - wait $job0 $job1
   # - docker-compose --project-name canvas-lms1 exec -T -e TEST_PROCESS=1 canvas bash -c "bundle exec parallel_rspec ./ --pattern $TEST_PATTERN --exclude-pattern $EXCLUDE_TESTS -n 2 --only-group 1 --verbose --group-by runtime --runtime-log parallel_runtime_rspec.log" &
   # - build/new-jenkins/rspec_parallel_dockers.sh

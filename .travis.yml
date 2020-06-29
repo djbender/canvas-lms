@@ -32,24 +32,63 @@ env:
     - DOCKER_BUILDKIT=1
     - DOCKER_CLI_EXPERIMENTAL=enabled
     - DOCKER_PROCESSES=2
-    - CI_NODE_TOTAL=4
-    - COMPOSE_FILE=docker-compose.new-jenkins.yml
-    - EXCLUDE_TESTS='.*/selenium'
-    - MAX_FAIL=250
+    - MAX_FAIL=100
     - PATCHSET_TAG=djbender/canvas-lms:travis-ci-test
-    - CACHE_TAG=djbender/canvas-lms:travis-ci-test-cache
-    - POSTGRES=9.5
+    - CACHE_IMAGE=djbender/canvas-lms:travis-ci-test-cache
+    - POSTGRES_VERSION=9.5
     - POSTGRES_PASSWORD=sekret
     - RERUNS_RETRY=3
-    - RUBY=2.6
-    - TEST_PATTERN='^./(spec|gems/plugins/.*/spec_canvas)/'
+    - RUBY_PASSENGER=2.6
     # - CANVAS_BUILD_CONCURRENCY=1
     # - JS_BUILD_NO_UGLIFY=1
   jobs:
-    - CI_NODE_INDEX=0
-    - CI_NODE_INDEX=1
-    - CI_NODE_INDEX=2
-    - CI_NODE_INDEX=3
+    # Non-Selenium
+    - COMPOSE_FILE=docker-compose.new-jenkins.yml
+      EXCLUDE_TESTS='.*/selenium'
+      CI_NODE_INDEX=0
+      CI_NODE_TOTAL=4
+      TEST_PATTERN='^./(spec|gems/plugins/.*/spec_canvas)/'
+    - COMPOSE_FILE=docker-compose.new-jenkins.yml
+      EXCLUDE_TESTS='.*/selenium'
+      CI_NODE_INDEX=1
+      CI_NODE_TOTAL=4
+      TEST_PATTERN='^./(spec|gems/plugins/.*/spec_canvas)/'
+    - COMPOSE_FILE=docker-compose.new-jenkins.yml
+      EXCLUDE_TESTS='.*/selenium'
+      CI_NODE_INDEX=2
+      CI_NODE_TOTAL=4
+      TEST_PATTERN='^./(spec|gems/plugins/.*/spec_canvas)/'
+    - COMPOSE_FILE=docker-compose.new-jenkins.yml
+      EXCLUDE_TESTS='.*/selenium'
+      CI_NODE_INDEX=3
+      CI_NODE_TOTAL=4
+      PATCHSET_TAG=djbender/canvas-lms:travis-ci-test
+      TEST_PATTERN='^./(spec|gems/plugins/.*/spec_canvas)/'
+
+    # Selenium
+    - COMPOSE_FILE=docker-compose.new-jenkins.yml:docker-compose.new-jenkins-selenium.yml
+      EXCLUDE_TESTS='.*/performance'
+      CI_NODE_INDEX=0
+      CI_NODE_TOTAL=4
+      TEST_PATTERN='^./(spec|gems/plugins/.*/spec_canvas)/selenium'
+    # Selenium
+    - COMPOSE_FILE=docker-compose.new-jenkins.yml:docker-compose.new-jenkins-selenium.yml
+      EXCLUDE_TESTS='.*/performance'
+      CI_NODE_INDEX=1
+      CI_NODE_TOTAL=4
+      TEST_PATTERN='^./(spec|gems/plugins/.*/spec_canvas)/selenium'
+    # Selenium
+    - COMPOSE_FILE=docker-compose.new-jenkins.yml:docker-compose.new-jenkins-selenium.yml
+      EXCLUDE_TESTS='.*/performance'
+      CI_NODE_INDEX=2
+      CI_NODE_TOTAL=4
+      TEST_PATTERN='^./(spec|gems/plugins/.*/spec_canvas)/selenium'
+    # Selenium
+    - COMPOSE_FILE=docker-compose.new-jenkins.yml:docker-compose.new-jenkins-selenium.yml
+      EXCLUDE_TESTS='.*/performance'
+      CI_NODE_INDEX=3
+      CI_NODE_TOTAL=4
+      TEST_PATTERN='^./(spec|gems/plugins/.*/spec_canvas)/selenium'
 
 install:
   - rustup target add x86_64-unknown-linux-musl
@@ -61,12 +100,12 @@ install:
   - popd
 
 stages:
-  - build docker image
-  - test
+  - Build Docker Image
+  - Test
 
 jobs:
   include:
-    - stage: build docker image
+    - stage: Build Docker Image
       env:
       - secure: "d4v3vqDPUydkeLqN6Kc7B3+bcHUYw5v8HDUOiH7/Y57EYTYZesXPxYeZWdtF8eRCpDcwomeJbMH4QyvABlhTOU5Y2tQVXPNFBiiKpgNV8GyUbIM7OXA8VFWj9s0rlI+1OpxN0py2p0LAXdYzvurf3Ck+EvuBvsNeB/xX6+asf+8="
       before_script:
@@ -83,10 +122,10 @@ jobs:
         - >
           docker buildx build
           --tag "$PATCHSET_TAG"
-          --build-arg RUBY_PASSENGER=$RUBY
-          --build-arg POSTGRES_VERSION=$POSTGRES
-          --cache-from=type=registry,ref="$CACHE_TAG"
-          --cache-to=type=registry,ref="$CACHE_TAG",mode=max
+          --build-arg RUBY_PASSENGER=$RUBY_PASSENGER
+          --build-arg POSTGRES=$POSTGRES
+          --cache-from=type=registry,ref="$CACHE_IMAGE"
+          --cache-to=type=registry,ref="$CACHE_IMAGE",mode=max
           --push
           .
 
@@ -104,7 +143,6 @@ script:
   # - build/new-jenkins/docker-compose-pull-selenium.sh
   - build/new-jenkins/docker-compose-build-up.sh
   - build/new-jenkins/docker-compose-setup-databases.sh
-  - echo DEBUG docker-compose --project-name canvas-lms0 exec -T canvas bash -c "bundle exec parallel_rspec ./ --test-options '--dry-run' --pattern \"$TEST_PATTERN\" --exclude-pattern $EXCLUDE_TESTS -n $CI_PROCESS_TOTAL --only-group $((GROUP_OFFSET - 0)) --verbose --group-by runtime --runtime-log parallel_runtime_rspec.log"
   - docker-compose --project-name canvas-lms0 exec -T canvas bash -c "bundle exec parallel_rspec ./ --test-options '--dry-run' --pattern \"$TEST_PATTERN\" --exclude-pattern $EXCLUDE_TESTS -n $CI_PROCESS_TOTAL --only-group $((GROUP_OFFSET - 0)) --verbose --group-by runtime --runtime-log parallel_runtime_rspec.log" &
   - job0=$!
   - docker-compose --project-name canvas-lms1 exec -T canvas bash -c "bundle exec parallel_rspec ./ --test-options '--dry-run' --pattern \"$TEST_PATTERN\" --exclude-pattern $EXCLUDE_TESTS -n $CI_PROCESS_TOTAL --only-group $((GROUP_OFFSET - 1)) --verbose --group-by runtime --runtime-log parallel_runtime_rspec.log" &

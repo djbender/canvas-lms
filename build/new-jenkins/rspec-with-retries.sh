@@ -4,6 +4,7 @@
 # has a lot of unset variables and needs to be addressed independently
 set -o errexit -o errtrace -o xtrace
 
+
 export ERROR_CONTEXT_BASE_PATH="/usr/src/app/log/spec_failures/Initial"
 
 success_status=0
